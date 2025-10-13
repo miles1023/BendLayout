@@ -20,7 +20,6 @@ jobs:
           java-version: 17
           cache: gradle
 
-      # Manually install Android command-line tools (sdkmanager)
       - name: Install Android SDK and cmdline-tools
         run: |
           sudo mkdir -p /usr/local/lib/android/sdk/cmdline-tools
@@ -31,7 +30,6 @@ jobs:
           export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --list | sed -n '1,60p'
         env:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
@@ -39,16 +37,28 @@ jobs:
       - name: Validate Gradle Wrapper
         uses: gradle/wrapper-validation-action@v2
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.internal.http.socketTimeout=120000 -Dorg.gradle.internal.http.connectionTimeout=120000"
+        run: |
+          ./gradlew --no-daemon --stacktrace --info :app:assembleDebug
 
       - name: Build Release (unsigned) APK & AAB
         run: |
-          ./gradlew :app:assembleRelease
-          ./gradlew :app:bundleRelease
+          ./gradlew --no-daemon :app:assembleRelease
+          ./gradlew --no-daemon :app:bundleRelease
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
