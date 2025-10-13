@@ -10,26 +10,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-          cache: 'gradle'
+          java-version: 17
+          cache: gradle
 
-      # Install Android SDK cmdline-tools and set ANDROID_HOME/ANDROID_SDK_ROOT
-      - name: Set up Android SDK (cmdline-tools only)
-        uses: android-actions/setup-android@v3
-
-      # Install required SDK packages explicitly (no newline parsing issues)
-      - name: Install SDK packages
-        shell: bash
+      # Install Android SDK (cmdline-tools are already included in runner)
+      - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" --no_https
           sdkmanager --list | sed -n '1,80p'
 
       - name: Validate Gradle Wrapper
@@ -46,7 +40,7 @@ jobs:
           ./gradlew :app:assembleRelease
           ./gradlew :app:bundleRelease
 
-      - name: Upload Artifacts
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: BendLayout-artifacts
