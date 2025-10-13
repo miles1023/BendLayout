@@ -1,0 +1,36 @@
+name: Android CI (APK + AAB)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: 'gradle'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-35
+            build-tools;35.0.0
+            platform-tools
+      - uses: gradle/wrapper-validation-action@v2
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleDebug
+      - name: Build Release (unsigned) APK & AAB
+        run: |
+          ./gradlew :app:assembleRelease
+          ./gradlew :app:bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BendLayout-artifacts
+          path: |
+            app/build/outputs/apk/**/app-*.apk
+            app/build/outputs/bundle/**/app-*.aab
+          if-no-files-found: error
