@@ -1,70 +1,60 @@
-name: Android CI (APK + AAB)
+  - name: Set up Java 17
+    uses: actions/setup-java@v3
+    with:
+      distribution: temurin
+      java-version: 17
+      cache: gradle
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main, master ]
+  - name: Install Android SDK and cmdline-tools
+    run: |
+      sudo mkdir -p /usr/local/lib/android/sdk/cmdline-tools
+      ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+      cd /tmp
+      curl -sSLo commandlinetools.zip https://dl.google.com/android/repository/commandlinetools-linux-11499072_latest.zip
+      sudo unzip -q -o commandlinetools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+      sudo mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest || true
+      export ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT
+      export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+      yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+      $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+  - name: Validate Gradle Wrapper
+    uses: gradle/wrapper-validation-action@v2
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  - name: Cache Gradle dependencies
+    uses: actions/cache@v4
+    with:
+      path: |
+        ~/.gradle/caches
+        ~/.gradle/wrapper
+      key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+      restore-keys: |
+        gradle-${{ runner.os }}-
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
+  - name: Build Debug APK
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
+      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.internal.http.socketTimeout=120000 -Dorg.gradle.internal.http.connectionTimeout=120000'
+    run: |
+      ./gradlew --no-daemon --stacktrace --info :app:assembleDebug
 
-      - name: Install Android SDK and cmdline-tools
-        run: |
-          sudo mkdir -p /usr/local/lib/android/sdk/cmdline-tools
-          cd /usr/local/lib/android/sdk/cmdline-tools
-          sudo wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
-          sudo unzip -q tools.zip -d latest
-          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
+  - name: Build Release (unsigned) APK & AAB
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
+    run: |
+      ./gradlew --no-daemon :app:assembleRelease
+      ./gradlew --no-daemon :app:bundleRelease
 
-      - name: Validate Gradle Wrapper
-        uses: gradle/wrapper-validation-action@v2
-
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      - name: Build Debug APK
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.internal.http.socketTimeout=120000 -Dorg.gradle.internal.http.connectionTimeout=120000"
-        run: |
-          ./gradlew --no-daemon --stacktrace --info :app:assembleDebug
-
-      - name: Build Release (unsigned) APK & AAB
-        run: |
-          ./gradlew --no-daemon :app:assembleRelease
-          ./gradlew --no-daemon :app:bundleRelease
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: BendLayout-artifacts
-          path: |
-            app/build/outputs/apk/**/app-*.apk
-            app/build/outputs/bundle/**/app-*.aab
-          if-no-files-found: error
+  - name: Upload Build Artifacts
+    uses: actions/upload-artifact@v4
+    with:
+      name: android-artifacts
+      path: |
+        app/build/outputs/apk/debug/*.apk
+        app/build/outputs/apk/release/*.apk
+        app/build/outputs/bundle/release/*.aab
